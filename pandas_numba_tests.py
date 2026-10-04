@@ -43,7 +43,12 @@ from numba import njit, objmode, float64
 
 from pandas_numba import (
     Pandas_nb,
-    Pandas_tools,
+    f_nb_to_np,
+    f_nb_to_df,
+    f_add_to_nb,
+    f_df_to_nb,
+    f_help_wide,
+    f_np_to_np_str,
     f_register_df,
     f_eval_expr,
     _DF_REGISTRY,
@@ -201,7 +206,7 @@ def _njit_add_f2_into_f1_eur_unicode(nb):
 def _build_two_float_nb():
     # Plain-python builder used from objmode: a Pandas_nb with float1/float2.
     df = pd.DataFrame({"float1": np.arange(5.0), "float2": np.arange(5.0) * 10.0})
-    return Pandas_tools.f_df_to_nb(df)
+    return f_df_to_nb(df)
 
 
 @njit
@@ -317,7 +322,7 @@ def test_add_type(t):
     assert nb.m_titles[t.name] == t.code
     backing = getattr(nb, CODE_TO_ATTR[t.code])[t.name]
     assert np.array_equal(backing, arr)
-    assert np.array_equal(Pandas_tools.f_nb_to_np(nb, t.name), arr)
+    assert np.array_equal(f_nb_to_np(nb, t.name), arr)
 
 
 @pytest.mark.parametrize("t", ALL_TYPES, ids=_IDS)
@@ -365,7 +370,7 @@ def test_nb_to_np_unknown_code_raises():
     nb = Pandas_nb()
     nb.m_titles["x"] = 99
     with pytest.raises(ValueError):
-        Pandas_tools.f_nb_to_np(nb, "x")
+        f_nb_to_np(nb, "x")
 
 
 # ===========================================================================
@@ -374,13 +379,13 @@ def test_nb_to_np_unknown_code_raises():
 def test_roundtrip_df_nb_df():
     """df -> nb -> df: numeric + char survive exactly (order kept); unicode dropped."""
     df = make_df(4)
-    nb = Pandas_tools.f_df_to_nb(df)
+    nb = f_df_to_nb(df)
     survivors = [s.name for s in ALL_TYPES if survives_roundtrip(s)]
     assert list(nb.m_titles) == survivors
     for s in ALL_TYPES:
         if not survives_roundtrip(s):
             assert s.name not in nb.m_titles
-    df2 = Pandas_tools.f_nb_to_df(nb)
+    df2 = f_nb_to_df(nb)
     assert list(df2.columns) == survivors
     for name in survivors:
         assert df2[name].dtype == df[name].dtype, name
@@ -389,17 +394,17 @@ def test_roundtrip_df_nb_df():
 
 def test_nb_df_nb():
     """nb -> df -> nb: char emits native |S (kept), unicode emits object (dropped)."""
-    nb0 = Pandas_tools.f_df_to_nb(make_df(4))          # numeric + char
+    nb0 = f_df_to_nb(make_df(4))          # numeric + char
     for s in ALL_TYPES:                                 # add unicode directly
         if s.group == "unicode":
             getattr(nb0, s.add_method)(s.name, sample(s, 4))
-    df = Pandas_tools.f_nb_to_df(nb0)
+    df = f_nb_to_df(nb0)
     for s in ALL_TYPES:
         if s.group == "char":
             assert df[s.name].dtype.kind == "S", s.name
         if s.group == "unicode":
             assert df[s.name].dtype == object, s.name
-    nbB = Pandas_tools.f_df_to_nb(df)                   # unicode dropped again
+    nbB = f_df_to_nb(df)                   # unicode dropped again
     survivors = [s.name for s in ALL_TYPES if survives_roundtrip(s)]
     assert list(nbB.m_titles) == survivors
     for s in ALL_TYPES:
@@ -415,17 +420,17 @@ def test_nb_to_df_fresh_and_inplace():
     nb.f_add_unicode10("c", np.array(["hi", "yo"], dtype="U10"))
     nb.f_add_char3("d", np.array([b"ab", b"cd"], dtype="S3"))
 
-    fresh = Pandas_tools.f_nb_to_df(nb)
+    fresh = f_nb_to_df(nb)
     assert list(fresh.columns) == ["a", "b", "c", "d"]
     assert fresh["c"].dtype == object                   # unicode -> object
     assert fresh["d"].dtype.kind == "S"                 # char -> native |S
 
     with pytest.raises(TypeError):
-        Pandas_tools.f_nb_to_df(nb, {"a": [1, 2]})
+        f_nb_to_df(nb, {"a": [1, 2]})
 
     df = pd.DataFrame({"a": np.array([10.0, 20.0]),
                        "x": np.array([7, 8], dtype=np.int64)})
-    out = Pandas_tools.f_nb_to_df(nb, df)
+    out = f_nb_to_df(nb, df)
     assert out is df
     assert list(out.columns) == ["a", "x", "b", "c", "d"]   # originals, then new
     assert np.array_equal(out["a"].to_numpy(), np.array([10.0, 20.0]))  # kept
@@ -442,7 +447,7 @@ def test_nb_to_df_fresh_and_inplace():
 def test_df_to_nb_shares(t):
     """Non-unicode columns are shared views: an nb write reaches df in place."""
     df = make_df(4)
-    nb = Pandas_tools.f_df_to_nb(df)
+    nb = f_df_to_nb(df)
     backing = getattr(nb, CODE_TO_ATTR[t.code])[t.name]
     nv = new_value(t)
     backing[0] = nv
@@ -453,7 +458,7 @@ def test_df_to_nb_shares(t):
 def test_df_to_nb_drops_object():
     """A plain object (text) column is not a native pandas column -> dropped."""
     df = pd.DataFrame({"x": np.array(["a", "b"], dtype=object)})
-    nb = Pandas_tools.f_df_to_nb(df)
+    nb = f_df_to_nb(df)
     assert "x" not in nb.m_titles
 
 
@@ -474,7 +479,7 @@ def test_str_types():
     df = pd.DataFrame(cols)
     str_types = {"s1": "S", "s3": "S", "s10": "S", "s100": "S",
                  "u1": "U", "u3": "U", "u10": "U", "u100": "U"}
-    nb = Pandas_tools.f_df_to_nb(df, str_types)
+    nb = f_df_to_nb(df, str_types)
 
     expected = [
         ("s1", CHAR1, nb.m_char1, "S1"), ("s3", CHAR3, nb.m_char3, "S3"),
@@ -497,24 +502,24 @@ def test_str_types():
     assert df["u3"].iloc[0] == "abc"                     # not shared
 
     # no str_types -> every object column dropped; a missing title is ignored
-    nb0 = Pandas_tools.f_df_to_nb(df)
+    nb0 = f_df_to_nb(df)
     for t in df.columns:
         assert (t in nb0.m_titles) == (t == "n")
-    assert "missing" not in Pandas_tools.f_df_to_nb(df, {"missing": "U"}).m_titles
+    assert "missing" not in f_df_to_nb(df, {"missing": "U"}).m_titles
 
     # f_add_to_nb direct str_types path: object text -> kept as U / S, with the
     # converted array stored exactly (not just the right code)
     nb2 = Pandas_nb()
-    assert Pandas_tools.f_add_to_nb(nb2, "txt", np.array(["hello", "world"], dtype=object),
+    assert f_add_to_nb(nb2, "txt", np.array(["hello", "world"], dtype=object),
                                     {"txt": "U"}) is True
     assert nb2.m_titles["txt"] == UNICODE10
     assert np.array_equal(nb2.m_unicode10["txt"], np.array(["hello", "world"], dtype="U10"))
-    assert Pandas_tools.f_add_to_nb(nb2, "bts", np.array(["ab", "cd"], dtype=object),
+    assert f_add_to_nb(nb2, "bts", np.array(["ab", "cd"], dtype=object),
                                     {"bts": "S"}) is True
     assert nb2.m_titles["bts"] == CHAR3
     assert np.array_equal(nb2.m_char3["bts"], np.array([b"ab", b"cd"], dtype="S3"))
     # a title ABSENT from a non-empty str_types still follows the object-drop path
-    assert Pandas_tools.f_add_to_nb(nb2, "drop", np.array(["a", "b"], dtype=object),
+    assert f_add_to_nb(nb2, "drop", np.array(["a", "b"], dtype=object),
                                     {"txt": "U"}) is False
     assert "drop" not in nb2.m_titles
 
@@ -526,26 +531,26 @@ def test_str_types():
 def test_add_to_nb_dispatch(t):
     """f_add_to_nb routes each numpy dtype (incl. char/unicode widths) to its code."""
     nb = Pandas_nb()
-    assert Pandas_tools.f_add_to_nb(nb, t.name, sample(t, 4)) is True
+    assert f_add_to_nb(nb, t.name, sample(t, 4)) is True
     assert nb.m_titles[t.name] == t.code
 
 
 def test_add_to_nb_raises():
     """object -> dropped (False); unsupported dtype / char / unicode width -> ValueError."""
     nb = Pandas_nb()
-    assert Pandas_tools.f_add_to_nb(nb, "obj", np.array(["a", "b"], dtype=object)) is False
+    assert f_add_to_nb(nb, "obj", np.array(["a", "b"], dtype=object)) is False
     assert "obj" not in nb.m_titles
     with pytest.raises(ValueError):
-        Pandas_tools.f_add_to_nb(nb, "f16", np.array([1, 2], dtype=np.float16))
+        f_add_to_nb(nb, "f16", np.array([1, 2], dtype=np.float16))
     with pytest.raises(ValueError):
-        Pandas_tools.f_add_to_nb(nb, "s2", np.array([b"ab"], dtype="S2"))
+        f_add_to_nb(nb, "s2", np.array([b"ab"], dtype="S2"))
     with pytest.raises(ValueError):
-        Pandas_tools.f_add_to_nb(nb, "u5", np.array(["abcde"], dtype="U5"))
+        f_add_to_nb(nb, "u5", np.array(["abcde"], dtype="U5"))
 
 
 def test_np_to_np_str():
     """f_np_to_np_str: smallest fitting width per kind, multibyte, ascii-raise, bounds."""
-    f = Pandas_tools.f_np_to_np_str
+    f = f_np_to_np_str
     cases = [
         (np.array(["a", "b"], dtype=object), 1),
         (np.array(["abc", "de"], dtype=object), 3),
@@ -577,7 +582,7 @@ def test_np_to_np_str():
 
 def test_help_wide():
     """f_help_wide picks the smallest of {1,3,10,100} that fits; over 100 raises."""
-    f = Pandas_tools.f_help_wide
+    f = f_help_wide
     assert [f(n, "u") for n in (1, 2, 3, 4, 10, 11, 100)] == [1, 3, 3, 10, 10, 100, 100]
     with pytest.raises(ValueError):
         f(101, "u")
@@ -590,7 +595,7 @@ def test_datetime_ns_shift_shared():
     """A datetime64[ns] column is a shared view; an njit shift reaches df in place."""
     dates = pd.date_range("2026-01-01", periods=5, freq="D")
     df = pd.DataFrame({"d": dates})
-    nb = Pandas_tools.f_df_to_nb(df)
+    nb = f_df_to_nb(df)
     assert nb.m_titles["d"] == DATETIME64NS
     before = df["d"].to_numpy().copy()
     one_day = np.timedelta64(86400 * 10**9, "ns")
@@ -603,9 +608,9 @@ def test_datetime_us_unsupported_and_tz_dropped():
     """datetime64[us] is unsupported (ValueError); tz-aware becomes object and is dropped."""
     df_us = pd.DataFrame({"d": np.array(["2026-01-01", "2026-01-02"], dtype="datetime64[us]")})
     with pytest.raises(ValueError):
-        Pandas_tools.f_df_to_nb(df_us)
+        f_df_to_nb(df_us)
     df_tz = pd.DataFrame({"d": pd.date_range("2026-01-01", periods=3).tz_localize("Europe/Paris")})
-    assert "d" not in Pandas_tools.f_df_to_nb(df_tz).m_titles
+    assert "d" not in f_df_to_nb(df_tz).m_titles
 
 
 # ===========================================================================
@@ -616,7 +621,7 @@ def test_njit_add_shared_writeback():
     f1 = np.arange(10, dtype=np.float64)
     f2 = np.arange(10, dtype=np.float64) * 10.0
     df = pd.DataFrame({"float1": f1.copy(), "float2": f2.copy()})
-    nb = Pandas_tools.f_df_to_nb(df)
+    nb = f_df_to_nb(df)
     _njit_add_f2_into_f1(nb)
     assert np.array_equal(df["float1"].to_numpy(), f1 + f2)
     assert np.array_equal(df["float2"].to_numpy(), f2)
@@ -629,7 +634,7 @@ def test_njit_gated_char():
     f2 = np.arange(n, dtype=np.float64) * 10.0
     ccy = np.array(["EUR" if i % 2 == 0 else "USD" for i in range(n)], dtype=object)
     df = pd.DataFrame({"float1": f1.copy(), "float2": f2.copy(), "ccy": ccy})
-    nb = Pandas_tools.f_df_to_nb(df, {"ccy": "S"})
+    nb = f_df_to_nb(df, {"ccy": "S"})
     assert nb.m_titles["ccy"] == CHAR3
     _njit_add_f2_into_f1_eur(nb)
     expected = np.where(ccy == "EUR", f1 + f2, f1)
@@ -643,7 +648,7 @@ def test_njit_gated_unicode():
     f2 = np.arange(n, dtype=np.float64) * 10.0
     ccy = np.array(["€UR" if i % 2 == 0 else "USD" for i in range(n)], dtype=object)
     df = pd.DataFrame({"float1": f1.copy(), "float2": f2.copy(), "ccy": ccy})
-    nb = Pandas_tools.f_df_to_nb(df, {"ccy": "U"})
+    nb = f_df_to_nb(df, {"ccy": "U"})
     assert nb.m_titles["ccy"] == UNICODE3
     assert nb.m_unicode3["ccy"][0] == "€UR"              # glyph preserved
     _njit_add_f2_into_f1_eur_unicode(nb)
@@ -718,15 +723,6 @@ def test_eval_expr_from_njit_timing(capsys):
         print("\n  f_eval_expr from njit: %.2f us/call "
               "(objmode-only baseline %.2f us/call) over %d calls"
               % (dt_eval / n * 1e6, dt_base / n * 1e6, n))
-
-
-# ===========================================================================
-# Misc
-# ===========================================================================
-def test_pandas_tools_not_instantiable():
-    """Pandas_tools is a static namespace: instantiation raises TypeError."""
-    with pytest.raises(TypeError):
-        Pandas_tools()
 
 
 def _print_test_catalog():

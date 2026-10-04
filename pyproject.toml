@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pandas_numba"
+version = "0.1.0"
+description = "pandas-style typed columns usable inside numba @njit (nopython) code, with a pandas DataFrame bridge"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Damien Loison" }]
+keywords = ["numba", "pandas", "jit", "njit", "jitclass", "dataframe", "nopython"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "numba>=0.60",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/daminoufr/pandas_numba"
+Repository = "https://github.com/daminoufr/pandas_numba"
+Issues = "https://github.com/daminoufr/pandas_numba/issues"
+
+[tool.setuptools]
+py-modules = ["pandas_numba"]

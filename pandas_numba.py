@@ -30,7 +30,7 @@
 # boilerplate and methods no longer callable directly from python. We keep the
 # light jitclass design on purpose. See pandas_numba.md for the full writeup.
 #
-# Pandas_tools: static converters Pandas_nb <-> pandas.DataFrame. Char columns
+# Converters (module-level functions) Pandas_nb <-> pandas.DataFrame. Char columns
 # cross as native fixed-width |S<n>; unicode cannot be a native pandas column
 # (text is object dtype), so unicode (U*) columns are emitted as object and dropped
 # by f_df_to_nb -- only numeric and char survive the round-trip.
@@ -88,7 +88,7 @@ UNICODE10 = 21
 UNICODE100 = 22
 
 # type code -> the Pandas_nb member dict that stores columns of that code.
-# Used by Pandas_tools.f_nb_to_np (and f_nb_to_df) to pick the backing dict by
+# Used by f_nb_to_np (and f_nb_to_df) to pick the backing dict by
 # code instead of a long if-elif ladder. Pure-python lookup -- not used in any
 # jitted code. CHAR_WIDTH maps the char codes to their native |S width.
 CODE_TO_ATTR = {
@@ -397,204 +397,195 @@ class Pandas_nb:
         self.m_titles[title] = UNICODE100
 
 
-class Pandas_tools:
-    # Static converters between Pandas_nb and a real pandas.DataFrame.
-    # Not instantiable. Char columns cross as native fixed-width |S<n> (n in
-    # 1/3/10/100), read back by itemsize. Unicode cannot be a native pandas
-    # column (text is object), so unicode (U*) columns are emitted as object and
-    # dropped by f_df_to_nb -- the round-trip preserves numeric and char only.
+# Module-level converters between Pandas_nb and a real pandas.DataFrame.
+# Char columns cross as native fixed-width |S<n> (n in 1/3/10/100), read back
+# by itemsize. Unicode cannot be a native pandas column (text is object), so
+# unicode (U*) columns are emitted as object and dropped by f_df_to_nb -- the
+# round-trip preserves numeric and char only.
 
-    def __new__(cls, *args, **kwargs):
-        raise TypeError("Pandas_tools is a static namespace and cannot be instantiated")
 
-    @staticmethod
-    def f_nb_to_np(nb, title):
-        # Return the numpy array backing one column of a Pandas_nb, selected by
-        # the column's stored type code via CODE_TO_ATTR. Raises ValueError on
-        # an unknown code.
+def f_nb_to_np(nb, title):
+    # Return the numpy array backing one column of a Pandas_nb, selected by
+    # the column's stored type code via CODE_TO_ATTR. Raises ValueError on
+    # an unknown code.
+    code = nb.m_titles[title]
+    attr = CODE_TO_ATTR.get(code)
+    if attr is None:
+        raise ValueError("unknown type code " + str(code) + " for column " + str(title))
+    return getattr(nb, attr)[title]
+
+def f_nb_to_df(nb, df=None):
+    # df=None: build and return a fresh DataFrame from nb.
+    # df given (must be a pandas.DataFrame): add to it only the nb columns
+    # whose titles are not already columns of df, and return it; existing
+    # df columns are left untouched.
+    if df is not None and not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas.DataFrame or None")
+    data = {}
+    char_widths = {}  # title -> width, for forcing native |S columns
+    for title in nb.m_titles:
+        data[title] = f_nb_to_np(nb, title)
         code = nb.m_titles[title]
-        attr = CODE_TO_ATTR.get(code)
-        if attr is None:
-            raise ValueError("unknown type code " + str(code) + " for column " + str(title))
-        return getattr(nb, attr)[title]
+        if code in CHAR_WIDTH:
+            char_widths[title] = CHAR_WIDTH[code]
+    # pandas coerces unicode/char arrays to object on construction; unicode
+    # (|U) stays object (pandas cannot hold it), but char arrays are forced back
+    # to their native |S<width> so f_df_to_nb reads the width directly.
+    if df is None:
+        out = pd.DataFrame(data)
+        for title, w in char_widths.items():
+            out[title] = out[title].astype("S" + str(w))
+        return out
+    for title, arr in data.items():
+        if title not in df.columns:
+            df[title] = arr
+            if title in char_widths:
+                df[title] = df[title].astype("S" + str(char_widths[title]))
+    return df
 
-    @staticmethod
-    def f_nb_to_df(nb, df=None):
-        # df=None: build and return a fresh DataFrame from nb.
-        # df given (must be a pandas.DataFrame): add to it only the nb columns
-        # whose titles are not already columns of df, and return it; existing
-        # df columns are left untouched.
-        if df is not None and not isinstance(df, pd.DataFrame):
-            raise TypeError("df must be a pandas.DataFrame or None")
-        data = {}
-        char_widths = {}  # title -> width, for forcing native |S columns
-        for title in nb.m_titles:
-            data[title] = Pandas_tools.f_nb_to_np(nb, title)
-            code = nb.m_titles[title]
-            if code in CHAR_WIDTH:
-                char_widths[title] = CHAR_WIDTH[code]
-        # pandas coerces unicode/char arrays to object on construction; unicode
-        # (|U) stays object (pandas cannot hold it), but char arrays are forced back
-        # to their native |S<width> so f_df_to_nb reads the width directly.
-        if df is None:
-            out = pd.DataFrame(data)
-            for title, w in char_widths.items():
-                out[title] = out[title].astype("S" + str(w))
-            return out
-        for title, arr in data.items():
-            if title not in df.columns:
-                df[title] = arr
-                if title in char_widths:
-                    df[title] = df[title].astype("S" + str(char_widths[title]))
-        return df
+def f_add_to_nb(nb, title, np_arr, str_types={}):
+    # Add one numpy array to nb as the column type matching its dtype.
+    # Returns True if a column was added, False if the array was dropped
+    # (object cannot be a native pandas column; see f_df_to_nb).
+    # Raises ValueError on an unsupported dtype or char/unicode width.
+    #
+    # Note (Windows): the dtype is taken as-is, and a bare np.array([1, 2, 3])
+    # is int32 on win64 (not int64), so it routes to INT32/m_int32. A pandas
+    # column is int64, so f_df_to_nb is unaffected; this only bites arrays
+    # built by hand without an explicit dtype.
+    #
+    # str_types: optional dict {title: kind}, kind "U" or "S" (same meaning
+    # as in f_df_to_nb). If `title` is listed, np_arr is first run through
+    # f_np_to_np_str to a fixed-width unicode (U) or char (S) array, so an
+    # object text array is KEPT as a U/S column instead of being dropped.
+    # The default {} is only ever read (never mutated), so sharing one
+    # instance is safe.
+    if title in str_types:
+        np_arr = f_np_to_np_str(np_arr, str_types[title])
+    dt = np_arr.dtype
+    if dt == np.float64:
+        nb.f_add_float(title, np_arr)
+    elif dt == np.int64:
+        nb.f_add_int(title, np_arr)
+    elif dt == np.bool_:
+        nb.f_add_bool(title, np_arr)
+    elif dt == np.int8:
+        nb.f_add_int8(title, np_arr)
+    elif dt == np.int16:
+        nb.f_add_int16(title, np_arr)
+    elif dt == np.int32:
+        nb.f_add_int32(title, np_arr)
+    elif dt == np.uint8:
+        nb.f_add_uint8(title, np_arr)
+    elif dt == np.uint16:
+        nb.f_add_uint16(title, np_arr)
+    elif dt == np.uint32:
+        nb.f_add_uint32(title, np_arr)
+    elif dt == np.uint64:
+        nb.f_add_uint64(title, np_arr)
+    elif dt == np.float32:
+        nb.f_add_float32(title, np_arr)
+    elif dt == np.complex64:
+        nb.f_add_complex64(title, np_arr)
+    elif dt == np.complex128:
+        nb.f_add_complex128(title, np_arr)
+    elif dt == np.dtype("datetime64[ns]"):
+        nb.f_add_datetime64ns(title, np_arr)
+    elif dt == np.dtype("timedelta64[ns]"):
+        nb.f_add_timedelta64ns(title, np_arr)
+    elif dt.kind == "S":
+        # native fixed-width char column: width is the itemsize.
+        n = np_arr.dtype.itemsize
+        if n == 1:
+            nb.f_add_char1(title, np_arr)
+        elif n == 3:
+            nb.f_add_char3(title, np_arr)
+        elif n == 10:
+            nb.f_add_char10(title, np_arr)
+        elif n == 100:
+            nb.f_add_char100(title, np_arr)
+        else:
+            raise ValueError("unsupported char width S" + str(n) + " for column " + str(title))
+    elif dt.kind == "U":
+        # native fixed-width unicode column: a |U element is 4 bytes per
+        # code point, so the width in code points is itemsize // 4.
+        n = np_arr.dtype.itemsize // 4
+        if n == 1:
+            nb.f_add_unicode1(title, np_arr)
+        elif n == 3:
+            nb.f_add_unicode3(title, np_arr)
+        elif n == 10:
+            nb.f_add_unicode10(title, np_arr)
+        elif n == 100:
+            nb.f_add_unicode100(title, np_arr)
+        else:
+            raise ValueError("unsupported unicode width U" + str(n) + " for column " + str(title))
+    elif dt == object:
+        # object columns are not a native pandas text column and map to no
+        # nb type; skip them silently (this is how unicode text from a
+        # DataFrame, stored as object, is dropped in f_df_to_nb).
+        return False
+    else:
+        raise ValueError("unsupported dtype " + str(dt) + " for column " + str(title))
+    return True
 
-    @staticmethod
-    def f_add_to_nb(nb, title, np_arr, str_types={}):
-        # Add one numpy array to nb as the column type matching its dtype.
-        # Returns True if a column was added, False if the array was dropped
-        # (object cannot be a native pandas column; see f_df_to_nb).
-        # Raises ValueError on an unsupported dtype or char/unicode width.
-        #
-        # Note (Windows): the dtype is taken as-is, and a bare np.array([1, 2, 3])
-        # is int32 on win64 (not int64), so it routes to INT32/m_int32. A pandas
-        # column is int64, so f_df_to_nb is unaffected; this only bites arrays
-        # built by hand without an explicit dtype.
-        #
-        # str_types: optional dict {title: kind}, kind "U" or "S" (same meaning
-        # as in f_df_to_nb). If `title` is listed, np_arr is first run through
-        # f_np_to_np_str to a fixed-width unicode (U) or char (S) array, so an
-        # object text array is KEPT as a U/S column instead of being dropped.
-        # The default {} is only ever read (never mutated), so sharing one
-        # instance is safe.
+def f_df_to_nb(df, str_types={}):
+    # str_types: optional dict {title: kind}, kind "U" or "S". For a listed
+    # title, the column's array is first run through f_np_to_np_str to a
+    # fixed-width unicode (U) or char (S) array, so it is kept as a U/S
+    # column instead of being dropped -- a text column is object dtype,
+    # which f_add_to_nb drops, whereas a |U / |S array is added.
+    # Titles not listed are added by dtype as before. The default {} is
+    # only ever read (never mutated), so sharing one instance is safe.
+    #
+    # Note: a listed column is NOT shared with df -- f_np_to_np_str builds
+    # a fresh array (astype), so the nb column and df no longer back the
+    # same memory. Updating such a column on either side must be copied to
+    # the other by hand. (Unlisted numeric/char columns stay shared views.)
+    #
+    # Note: the str_types conversion is applied HERE (and the array is then
+    # passed to f_add_to_nb without str_types), while f_add_to_nb also
+    # accepts str_types for direct callers -- the same rule lives in both,
+    # so a listed column is converted exactly once (never forwarded/double).
+    nb = Pandas_nb()
+    for title in df.columns:
+        arr = df[title].to_numpy()
         if title in str_types:
-            np_arr = Pandas_tools.f_np_to_np_str(np_arr, str_types[title])
-        dt = np_arr.dtype
-        if dt == np.float64:
-            nb.f_add_float(title, np_arr)
-        elif dt == np.int64:
-            nb.f_add_int(title, np_arr)
-        elif dt == np.bool_:
-            nb.f_add_bool(title, np_arr)
-        elif dt == np.int8:
-            nb.f_add_int8(title, np_arr)
-        elif dt == np.int16:
-            nb.f_add_int16(title, np_arr)
-        elif dt == np.int32:
-            nb.f_add_int32(title, np_arr)
-        elif dt == np.uint8:
-            nb.f_add_uint8(title, np_arr)
-        elif dt == np.uint16:
-            nb.f_add_uint16(title, np_arr)
-        elif dt == np.uint32:
-            nb.f_add_uint32(title, np_arr)
-        elif dt == np.uint64:
-            nb.f_add_uint64(title, np_arr)
-        elif dt == np.float32:
-            nb.f_add_float32(title, np_arr)
-        elif dt == np.complex64:
-            nb.f_add_complex64(title, np_arr)
-        elif dt == np.complex128:
-            nb.f_add_complex128(title, np_arr)
-        elif dt == np.dtype("datetime64[ns]"):
-            nb.f_add_datetime64ns(title, np_arr)
-        elif dt == np.dtype("timedelta64[ns]"):
-            nb.f_add_timedelta64ns(title, np_arr)
-        elif dt.kind == "S":
-            # native fixed-width char column: width is the itemsize.
-            n = np_arr.dtype.itemsize
-            if n == 1:
-                nb.f_add_char1(title, np_arr)
-            elif n == 3:
-                nb.f_add_char3(title, np_arr)
-            elif n == 10:
-                nb.f_add_char10(title, np_arr)
-            elif n == 100:
-                nb.f_add_char100(title, np_arr)
-            else:
-                raise ValueError("unsupported char width S" + str(n) + " for column " + str(title))
-        elif dt.kind == "U":
-            # native fixed-width unicode column: a |U element is 4 bytes per
-            # code point, so the width in code points is itemsize // 4.
-            n = np_arr.dtype.itemsize // 4
-            if n == 1:
-                nb.f_add_unicode1(title, np_arr)
-            elif n == 3:
-                nb.f_add_unicode3(title, np_arr)
-            elif n == 10:
-                nb.f_add_unicode10(title, np_arr)
-            elif n == 100:
-                nb.f_add_unicode100(title, np_arr)
-            else:
-                raise ValueError("unsupported unicode width U" + str(n) + " for column " + str(title))
-        elif dt == object:
-            # object columns are not a native pandas text column and map to no
-            # nb type; skip them silently (this is how unicode text from a
-            # DataFrame, stored as object, is dropped in f_df_to_nb).
-            return False
-        else:
-            raise ValueError("unsupported dtype " + str(dt) + " for column " + str(title))
-        return True
+            arr = f_np_to_np_str(arr, str_types[title])
+        f_add_to_nb(nb, title, arr)
+    return nb
 
-    @staticmethod
-    def f_df_to_nb(df, str_types={}):
-        # str_types: optional dict {title: kind}, kind "U" or "S". For a listed
-        # title, the column's array is first run through f_np_to_np_str to a
-        # fixed-width unicode (U) or char (S) array, so it is kept as a U/S
-        # column instead of being dropped -- a text column is object dtype,
-        # which f_add_to_nb drops, whereas a |U / |S array is added.
-        # Titles not listed are added by dtype as before. The default {} is
-        # only ever read (never mutated), so sharing one instance is safe.
-        #
-        # Note: a listed column is NOT shared with df -- f_np_to_np_str builds
-        # a fresh array (astype), so the nb column and df no longer back the
-        # same memory. Updating such a column on either side must be copied to
-        # the other by hand. (Unlisted numeric/char columns stay shared views.)
-        #
-        # Note: the str_types conversion is applied HERE (and the array is then
-        # passed to f_add_to_nb without str_types), while f_add_to_nb also
-        # accepts str_types for direct callers -- the same rule lives in both,
-        # so a listed column is converted exactly once (never forwarded/double).
-        nb = Pandas_nb()
-        for title in df.columns:
-            arr = df[title].to_numpy()
-            if title in str_types:
-                arr = Pandas_tools.f_np_to_np_str(arr, str_types[title])
-            Pandas_tools.f_add_to_nb(nb, title, arr)
-        return nb
+def f_help_wide(need, unit):
+    # Pick the smallest supported fixed width (1, 3, 10, 100) that fits
+    # `need` units. Raises ValueError if `need` exceeds 100. `unit` only
+    # labels the error message (e.g. "bytes", "code points").
+    for w in (1, 3, 10, 100):
+        if need <= w:
+            return w
+    raise ValueError(str(need) + " " + unit
+                     + " exceeds largest supported width 100")
 
-    @staticmethod
-    def f_help_wide(need, unit):
-        # Pick the smallest supported fixed width (1, 3, 10, 100) that fits
-        # `need` units. Raises ValueError if `need` exceeds 100. `unit` only
-        # labels the error message (e.g. "bytes", "code points").
-        for w in (1, 3, 10, 100):
-            if need <= w:
-                return w
-        raise ValueError(str(need) + " " + unit
-                         + " exceeds largest supported width 100")
-
-    @staticmethod
-    def f_np_to_np_str(np_arr, kind="U"):
-        # Convert a numpy array to a numpy fixed-width string array, using the
-        # smallest supported width (1, 3, 10, 100) that fits the longest value.
-        #   kind "U": unicode, width counted in code points (itemsize // 4)
-        #   kind "S": bytes,   width counted in bytes      (itemsize); numpy
-        #             encodes with the ascii codec, raising UnicodeEncodeError
-        #             on a non-ascii value.
-        # Raises ValueError on an unknown kind, or if the longest value exceeds
-        # the largest supported width (100).
-        if kind == "U":
-            unit, label = 4, "code points"
-        elif kind == "S":
-            unit, label = 1, "bytes"
-        else:
-            raise ValueError("kind must be 'U' or 'S', got " + str(kind))
-        # astype(kind) sizes the result to the longest element (width 1 for
-        # empty input); need is that width in the kind's own units.
-        s = np_arr.astype(kind)
-        need = s.dtype.itemsize // unit
-        width = Pandas_tools.f_help_wide(need, label)
-        return s.astype(kind + str(width))
+def f_np_to_np_str(np_arr, kind="U"):
+    # Convert a numpy array to a numpy fixed-width string array, using the
+    # smallest supported width (1, 3, 10, 100) that fits the longest value.
+    #   kind "U": unicode, width counted in code points (itemsize // 4)
+    #   kind "S": bytes,   width counted in bytes      (itemsize); numpy
+    #             encodes with the ascii codec, raising UnicodeEncodeError
+    #             on a non-ascii value.
+    # Raises ValueError on an unknown kind, or if the longest value exceeds
+    # the largest supported width (100).
+    if kind == "U":
+        unit, label = 4, "code points"
+    elif kind == "S":
+        unit, label = 1, "bytes"
+    else:
+        raise ValueError("kind must be 'U' or 'S', got " + str(kind))
+    # astype(kind) sizes the result to the longest element (width 1 for
+    # empty input); need is that width in the kind's own units.
+    s = np_arr.astype(kind)
+    need = s.dtype.itemsize // unit
+    width = f_help_wide(need, label)
+    return s.astype(kind + str(width))
 
 
 # ---------------------------------------------------------------------------

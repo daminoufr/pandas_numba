@@ -1,4 +1,4 @@
-# orderbook.py
+# simple_case_study.py
 #
 # Case study data: top-of-book (first level) snapshots for a single asset, as a
 # pandas DataFrame. One row = one snapshot of the best bid/ask and their sizes.
@@ -118,7 +118,7 @@ def f_indicators_by_nb(df):
     # are shared views, flag is forced to a char column so the njit loop can
     # count "H" -- carry df by int64 handle, then fill + attach mean_w_jit in an
     # @njit routine. Returns (df, nb); df gains the new float32 mean_w_jit column.
-    nb = pn.Pandas_tools.f_df_to_nb(df, {"flag": "S"})   # mid/vols shared; flag -> CHAR1
+    nb = pn.f_df_to_nb(df, {"flag": "S"})   # mid/vols shared; flag -> CHAR1
     pn.f_register_df(nb, df)                             # attach df by handle
     f_indicators_jit(nb)                                   # njit: fill + push mean_w_jit
     return df, nb
@@ -182,19 +182,6 @@ def f_indicators_jit(nb):
             nb)
 
 
-def f_test_book():
-    df = f_make_book(10000, seed=0)
-
-    book = f_indicators(f_markout_grid(df))
-    book, nb = f_indicators_by_nb(book)
-    f_set_shared_and_un_shared(book, nb)        # add 3 cols to book + nb
-    print('initial book')
-    print(book.head(10).to_string())            # 10 first lines (initial)
-    f_change_nb_values(nb)                      # mutate the 3 cols IN nb (python)
-    print('mutate the 3 cols IN pandas_nb (not df): df differs in the 2 shared cols only')
-    print(book.head(10).to_string())            # differs in the 2 shared cols only
-
-
 def f_set_shared_and_un_shared(df, panda_nb):
     # Add three columns to df, then bridge them into panda_nb with f_add_to_nb:
     # int8 and native |S3 cross as SHARED views (df[col].to_numpy() is a view,
@@ -204,9 +191,9 @@ def f_set_shared_and_un_shared(df, panda_nb):
     df["shared_int8"] = np.array([1] * n, dtype=np.int8)
     df["shared_char3"] = np.array(["AAA"] * n, dtype="S3")
     df["unshared_unicode"] = np.array(["AAA"] * n, dtype=object)
-    pn.Pandas_tools.f_add_to_nb(panda_nb, "shared_int8", df["shared_int8"].to_numpy())
-    pn.Pandas_tools.f_add_to_nb(panda_nb, "shared_char3", df["shared_char3"].to_numpy())
-    pn.Pandas_tools.f_add_to_nb(panda_nb, "unshared_unicode",
+    pn.f_add_to_nb(panda_nb, "shared_int8", df["shared_int8"].to_numpy())
+    pn.f_add_to_nb(panda_nb, "shared_char3", df["shared_char3"].to_numpy())
+    pn.f_add_to_nb(panda_nb, "unshared_unicode",
                                 df["unshared_unicode"].to_numpy(),
                                 {"unshared_unicode": "U"})
 
@@ -218,6 +205,19 @@ def f_change_nb_values(nb):
     nb.m_int8["shared_int8"][:] = 2
     nb.m_char3["shared_char3"][:] = b"BBB"
     nb.m_unicode3["unshared_unicode"][:] = "BBB"
+
+
+def f_test_book():
+    df = f_make_book(10000, seed=0)
+
+    book = f_indicators(f_markout_grid(df))
+    book, nb = f_indicators_by_nb(book)
+    f_set_shared_and_un_shared(book, nb)        # add 3 cols to book + nb
+    print('initial book')
+    print(book.head(10).to_string())            # 10 first lines (initial)
+    f_change_nb_values(nb)                      # mutate the 3 cols IN nb (python)
+    print('mutate the 3 cols IN pandas_nb (not df): df differs in the 2 shared cols only')
+    print(book.head(10).to_string())            # differs in the 2 shared cols only
 
 
 def f_main():

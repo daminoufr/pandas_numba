@@ -1,7 +1,8 @@
 # pandas_numba
 
 A numba `jitclass` (`Pandas_nb`) that holds DataFrame-like columns usable inside
-`@njit` nopython code, plus a pandas bridge (`Pandas_tools`) and a way to call
+`@njit` nopython code, plus a pandas bridge (`f_df_to_nb` / `f_nb_to_df` and
+friends) and a way to call
 back into Python/pandas from jitted code (`f_eval_expr` + objmode). Core lives in
 `pandas_numba.py`; tests and their `@njit` helpers in `pandas_numba_tests.py`.
 
@@ -40,7 +41,7 @@ column **cannot be allocated inside numba**, so `values` is required there.
 `error_if_present=True` rejects a duplicate title (pass `False` to overwrite;
 jitclass methods take positional args only).
 
-### pandas bridge — `Pandas_tools` (static, not instantiable)
+### pandas bridge — module-level functions
 
 | Function                                    | Does                                                                               |
 | ------------------------------------------- | ---------------------------------------------------------------------------------- |
