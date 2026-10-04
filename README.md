@@ -4,7 +4,8 @@ A tiny numba `jitclass` holding pandas-style typed columns for use inside `@njit
 nopython code — plus a pandas DataFrame bridge and objmode glue to call back into
 pandas from jitted code.
 
-Repository: https://github.com/daminoufr/pandas_numba
+- Repository: https://github.com/daminoufr/pandas_numba
+- PyPI: https://pypi.org/project/pandas-numba/
 
 - **`Pandas_nb`** — a `jitclass` DataFrame-like container: one numpy array per
   column, keyed by title, one typed dict per element type.
@@ -18,6 +19,20 @@ Repository: https://github.com/daminoufr/pandas_numba
 
 - Python 3.12
 - `numpy`, `pandas`, `numba`
+
+## Installation
+
+From PyPI:
+
+```
+pip install pandas_numba
+```
+
+Or the latest from GitHub:
+
+```
+pip install git+https://github.com/daminoufr/pandas_numba.git
+```
 
 ## Quick start
 
