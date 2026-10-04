@@ -45,6 +45,38 @@ print(df)                               # df is changed
 
 (The same script lives in [`simple_example.py`](simple_example.py).)
 
+## Calling Python (pandas) from a jitted function
+
+A `DataFrame` has no numba type, so it cannot cross into nopython code. To run
+real pandas from inside an `@njit` function, carry the frame **by handle**:
+`f_register_df(nb, df)` stores `df` in a Python-side registry and writes its
+`int64` id into `nb.m_df_id`. Inside the jitted code, an `objmode` block hops
+back into Python and `f_eval_expr` evaluates an expression string with `np`,
+`pd`, the registry `DF`, and `params` (your `Pandas_nb`) in scope:
+
+```python
+import pandas as pd
+from numba import njit, objmode, float64
+from pandas_numba import f_df_to_nb, f_register_df, f_eval_expr
+
+df = pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0]})
+nb = f_df_to_nb(df)
+f_register_df(nb, df)              # attach df by handle (sets nb.m_df_id)
+
+@njit
+def f_sum_via_pandas(nb):
+    with objmode(tot=float64):     # hop from nopython back into Python
+        tot = f_eval_expr("float(DF[params.m_df_id]['x'].sum())", nb)
+    return tot
+
+print(f_sum_via_pandas(nb))        # 10.0
+```
+
+Any pandas call is reachable this way, not just `.sum()`. Note `objmode` needs a
+**static output type** (here `float64`), the registry holds `df` **weakly** (keep
+your own reference alive while the handle is used), and each `f_eval_expr` round
+trip costs on the order of ~15 µs, so it is for occasional calls, not hot loops.
+
 ## Example data
 
 [`simple_case_study.py`](simple_case_study.py) generates a small top-of-book
