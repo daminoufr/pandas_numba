@@ -28,6 +28,3 @@ Thumbs.db
 
 # Local Claude launcher (not part of the project)
 claude_cmd_run.bat
-
-# Local Claude project instructions (not part of the project)
-CLAUDE.md
