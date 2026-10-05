@@ -4,7 +4,8 @@ A tiny numba `jitclass` holding pandas-style typed columns for use inside `@njit
 nopython code — plus a pandas DataFrame bridge and objmode glue to call back into
 pandas from jitted code.
 
-Repository: https://github.com/daminoufr/pandas_numba
+- Repository: https://github.com/daminoufr/pandas_numba
+- PyPI: https://pypi.org/project/pandas-numba/
 
 - **`Pandas_nb`** — a `jitclass` DataFrame-like container: one numpy array per
   column, keyed by title, one typed dict per element type.
@@ -18,6 +19,20 @@ Repository: https://github.com/daminoufr/pandas_numba
 
 - Python 3.12
 - `numpy`, `pandas`, `numba`
+
+## Installation
+
+From PyPI:
+
+```
+pip install pandas_numba
+```
+
+Or the latest from GitHub:
+
+```
+pip install git+https://github.com/daminoufr/pandas_numba.git
+```
 
 ## Quick start
 
@@ -88,6 +103,19 @@ to feed through the bridge functions. `f_make_book(n)` scales it to `n` rows.
 See [`pandas_numba.md`](pandas_numba.md) for the full data model, API, the
 pandas round-trip rules, the df-by-handle / string-eval objmode mechanism, and
 the numba constraints.
+
+A browsable **HTML API site** (Sphinx + autodoc, pydata theme) is generated from
+the module's docstrings:
+
+```
+python scripts/generate_html_docs.py          # build if stale
+python scripts/generate_html_docs.py --force   # always rebuild
+python scripts/generate_html_docs.py --open    # rebuild and open in a browser
+```
+
+The hand-written Sphinx sources live in `docs_html/pandas_numba/source/`; the
+built site is written to `docs_html/pandas_numba/build/index.html` (git-ignored,
+regenerate on demand).
 
 ## Tests
 

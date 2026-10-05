@@ -1,0 +1,70 @@
+/* Custom CSS for pandas_numba documentation */
+
+/* Signature styling */
+.sig-name {
+    font-weight: 600;
+}
+
+.sig-param {
+    font-style: italic;
+}
+
+/* Make code blocks more prominent */
+div.highlight {
+    margin: 1em 0;
+}
+
+/* Category section headings */
+.category-section {
+    margin-top: 2em;
+    margin-bottom: 1em;
+}
+
+.category-section h2 {
+    border-bottom: 2px solid var(--pst-color-primary);
+    padding-bottom: 0.3em;
+}
+
+/* Keep wide tables readable */
+.table-wrapper,
+.pst-scrollable-table-container {
+    overflow-x: auto;
+}
+
+/* Function / method documentation blocks */
+dl.py > dt {
+    background-color: var(--pst-color-surface);
+    padding: 0.5em;
+    border-left: 3px solid var(--pst-color-primary);
+    margin-top: 1em;
+}
+
+dl.py > dd {
+    padding-left: 1em;
+    margin-top: 0.5em;
+}
+
+/* Parameter / field lists */
+.field-list dt {
+    font-weight: 600;
+}
+
+.field-list dd {
+    margin-left: 1em;
+    margin-bottom: 0.5em;
+}
+
+/* Navigation spacing */
+.bd-sidebar-primary .nav-link {
+    padding: 0.3em 0.5em;
+}
+
+/* "Example from tests" collapsible blocks */
+details.sd-dropdown summary.example-dropdown {
+    font-family: var(--pst-font-family-monospace);
+    font-size: 0.9em;
+}
+
+details.sd-dropdown {
+    margin: 0.5em 0 1.75em 0;
+}
