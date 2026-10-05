@@ -4,6 +4,7 @@ A tiny numba `jitclass` holding pandas-style typed columns for use inside `@njit
 nopython code — plus a pandas DataFrame bridge and objmode glue to call back into
 pandas from jitted code.
 
+- Homepage: https://pypi.org/project/pandas-numba/
 - Repository: https://github.com/daminoufr/pandas_numba
 - PyPI: https://pypi.org/project/pandas-numba/
 

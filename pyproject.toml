@@ -32,7 +32,8 @@ dependencies = [
 test = ["pytest"]
 
 [project.urls]
-Homepage = "https://github.com/daminoufr/pandas_numba"
+Homepage = "https://pypi.org/project/pandas-numba/"
+Documentation = "https://pypi.org/project/pandas-numba/"
 Repository = "https://github.com/daminoufr/pandas_numba"
 Issues = "https://github.com/daminoufr/pandas_numba/issues"
 
