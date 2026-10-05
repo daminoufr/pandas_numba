@@ -104,19 +104,6 @@ See [`pandas_numba.md`](pandas_numba.md) for the full data model, API, the
 pandas round-trip rules, the df-by-handle / string-eval objmode mechanism, and
 the numba constraints.
 
-A browsable **HTML API site** (Sphinx + autodoc, pydata theme) is generated from
-the module's docstrings:
-
-```
-python scripts/generate_html_docs.py          # build if stale
-python scripts/generate_html_docs.py --force   # always rebuild
-python scripts/generate_html_docs.py --open    # rebuild and open in a browser
-```
-
-The hand-written Sphinx sources live in `docs_html/pandas_numba/source/`; the
-built site is written to `docs_html/pandas_numba/build/index.html` (git-ignored,
-regenerate on demand).
-
 ## Tests
 
 ```

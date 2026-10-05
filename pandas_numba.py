@@ -39,20 +39,6 @@
 # pandas_numba_tests.py (python -m pytest code/pandas_numba_tests.py) --
 # add a column type by adding one row to its ALL_TYPES table.
 
-"""Pandas-style typed columns usable inside numba ``@njit`` nopython code.
-
-This module provides :class:`Pandas_nb`, a numba ``jitclass`` that holds one
-numpy array per column (keyed by title), a small pandas bridge
-(:func:`f_df_to_nb` / :func:`f_nb_to_df` and friends), and objmode glue
-(:func:`f_register_df` + :func:`f_eval_expr`) for calling back into
-Python/pandas from jitted code.
-
-See ``pandas_numba.md`` for the full data model, round-trip rules, and the
-numba constraints that shape the design. The pytest suite in
-``pandas_numba_tests.py`` is driven by one ``ALL_TYPES`` table; add a column
-type by adding one row.
-"""
-
 import weakref
 
 import numpy as np
@@ -169,51 +155,6 @@ spec = [
 
 @jitclass(spec)
 class Pandas_nb:
-    """A numba ``jitclass`` holding pandas-style typed columns.
-
-    Each column is a 1-D numpy array keyed by title. numba typed dicts are
-    homogeneous in their value type, so there is **one backing dict per element
-    type** (``m_floats``, ``m_ints``, ``m_char3``, ...); ``m_titles[title]``
-    stores an ``int64`` type code selecting which dict holds the column.
-    ``CODE_TO_ATTR`` maps each code to its dict name.
-
-    Columns are added with one method per type::
-
-        f_add_<type>(title, values=None, error_if_present=True)
-
-    for example :meth:`f_add_float`, :meth:`f_add_int`, :meth:`f_add_char3`,
-    :meth:`f_add_unicode10`. The contract is uniform across types:
-
-    * ``values=None`` creates an empty column -- but only for numeric families
-      (float/int/bool/complex/datetime); a fixed-width char/unicode column
-      **cannot be allocated inside numba**, so ``values`` is required there and
-      ``None`` raises ``ValueError``.
-    * ``error_if_present=True`` rejects a duplicate title; pass ``False`` to
-      overwrite. jitclass methods take **positional arguments only**.
-
-    Supported column families and their backing dicts:
-
-    ===========  ==========================================  ==================================
-    Family       dtypes                                      backing dict(s)
-    ===========  ==========================================  ==================================
-    float        float64, float32                            ``m_floats``, ``m_float32``
-    int          int64/32/16/8, uint64/32/16/8               ``m_ints``, ``m_int32``, ... ``m_uint8``
-    bool         bool\\_                                       ``m_bool``
-    complex      complex128, complex64                       ``m_complex128``, ``m_complex64``
-    datetime     datetime64[ns], timedelta64[ns] (ns only)   ``m_datetime64ns``, ``m_timedelta64ns``
-    char (S)     S1, S3, S10, S100 (bytes)                   ``m_char1``, ``m_char3``, ...
-    unicode (U)  U1, U3, U10, U100 (code points)             ``m_unicode1``, ``m_unicode3``, ...
-    ===========  ==========================================  ==================================
-
-    Fixed-width text comes in exactly four widths: **1, 3, 10, 100**. The
-    ``int64`` member ``m_df_id`` optionally carries a source DataFrame by handle
-    (see :func:`f_register_df`); ``-1`` means none.
-
-    Instances are created with no arguments (``nb = Pandas_nb()``) and all
-    dicts start empty. Prefer the module-level :func:`f_df_to_nb` to build one
-    from a DataFrame.
-    """
-
     def __init__(self):
         self.m_floats = Dict.empty(types.unicode_type, float64[:])
         self.m_ints = Dict.empty(types.unicode_type, int64[:])
@@ -242,22 +183,6 @@ class Pandas_nb:
         self.m_df_id = -1  # no python df attached yet (see f_register_df)
 
     def f_add_float(self, title, values=None, error_if_present=True):
-        """Add a ``float64`` column (representative of the numeric families).
-
-        Every numeric ``f_add_<type>`` method (float/int/bool/complex/datetime,
-        in all widths) follows this exact shape; only the dtype and backing
-        dict differ.
-
-        Args:
-            title: Column name (used as the dict key and the type-code key).
-            values: A 1-D numpy array of the matching dtype, or ``None`` for an
-                empty column. Numeric arrays may be built inside ``@njit``.
-            error_if_present: If ``True`` (default), raise ``ValueError`` when
-                ``title`` already exists; pass ``False`` to overwrite.
-
-        Raises:
-            ValueError: If ``error_if_present`` and ``title`` is already present.
-        """
         if error_if_present and title in self.m_titles:
             raise ValueError("title already present")
         if values is None:
@@ -408,25 +333,6 @@ class Pandas_nb:
         self.m_titles[title] = TIMEDELTA64NS
 
     def f_add_char1(self, title, values=None, error_if_present=True):
-        """Add a width-1 char (``|S1``) column (representative of text families).
-
-        Every fixed-width text ``f_add_<type>`` method (char ``|S`` and unicode
-        ``|U``, widths 1/3/10/100) follows this exact shape. Unlike the numeric
-        methods, ``values`` is **required**: numba cannot allocate a fixed-width
-        char/unicode array in nopython code, so it must be built in Python
-        (e.g. ``np.empty(n, dtype='S1')``) and passed in.
-
-        Args:
-            title: Column name.
-            values: A 1-D numpy array of the matching fixed-width dtype. Passing
-                ``None`` raises ``ValueError``.
-            error_if_present: If ``True`` (default), raise ``ValueError`` when
-                ``title`` already exists; pass ``False`` to overwrite.
-
-        Raises:
-            ValueError: If ``error_if_present`` and ``title`` is already present,
-                or if ``values`` is ``None``.
-        """
         if error_if_present and title in self.m_titles:
             raise ValueError("title already present")
         if values is None:
@@ -499,21 +405,9 @@ class Pandas_nb:
 
 
 def f_nb_to_np(nb, title):
-    """Return the numpy array backing one column of a :class:`Pandas_nb`.
-
-    The column is selected by its stored ``int64`` type code via
-    ``CODE_TO_ATTR``, which names the backing dict.
-
-    Args:
-        nb: The :class:`Pandas_nb` to read from.
-        title: The column title.
-
-    Returns:
-        The 1-D numpy array backing the column.
-
-    Raises:
-        ValueError: If the column's stored type code is unknown.
-    """
+    # Return the numpy array backing one column of a Pandas_nb, selected by
+    # the column's stored type code via CODE_TO_ATTR. Raises ValueError on
+    # an unknown code.
     code = nb.m_titles[title]
     attr = CODE_TO_ATTR.get(code)
     if attr is None:
@@ -521,26 +415,10 @@ def f_nb_to_np(nb, title):
     return getattr(nb, attr)[title]
 
 def f_nb_to_df(nb, df=None):
-    """Convert a :class:`Pandas_nb` to a pandas DataFrame.
-
-    Char columns are forced back to their native fixed-width ``|S<width>`` so a
-    later :func:`f_df_to_nb` reads the width directly. Unicode columns are
-    emitted as object dtype (pandas has no native fixed-width unicode column),
-    so they do not survive a second round-trip.
-
-    Args:
-        nb: The :class:`Pandas_nb` to convert.
-        df: If ``None`` (default), build and return a fresh DataFrame. If a
-            DataFrame is given, add to it only the ``nb`` columns whose titles
-            are not already columns of ``df`` and return it; existing columns
-            are left untouched.
-
-    Returns:
-        The fresh or augmented :class:`pandas.DataFrame`.
-
-    Raises:
-        TypeError: If ``df`` is neither ``None`` nor a :class:`pandas.DataFrame`.
-    """
+    # df=None: build and return a fresh DataFrame from nb.
+    # df given (must be a pandas.DataFrame): add to it only the nb columns
+    # whose titles are not already columns of df, and return it; existing
+    # df columns are left untouched.
     if df is not None and not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas.DataFrame or None")
     data = {}
@@ -566,35 +444,22 @@ def f_nb_to_df(nb, df=None):
     return df
 
 def f_add_to_nb(nb, title, np_arr, str_types={}):
-    """Add one numpy array to ``nb`` as the column type matching its dtype.
-
-    The dtype is taken as-is and routed to the matching ``f_add_<type>``
-    method.
-
-    Args:
-        nb: The :class:`Pandas_nb` to add to.
-        title: The column title.
-        np_arr: The 1-D numpy array to add.
-        str_types: Optional ``{title: kind}`` with ``kind`` ``"U"`` or ``"S"``
-            (same meaning as in :func:`f_df_to_nb`). If ``title`` is listed,
-            ``np_arr`` is first run through :func:`f_np_to_np_str` to a
-            fixed-width unicode (U) or char (S) array, so an object text array
-            is **kept** as a U/S column instead of being dropped. The default
-            ``{}`` is only ever read, so sharing one instance is safe.
-
-    Returns:
-        ``True`` if a column was added, ``False`` if the array was dropped
-        (object dtype cannot be a native pandas column; see :func:`f_df_to_nb`).
-
-    Raises:
-        ValueError: On an unsupported dtype or char/unicode width.
-
-    Note:
-        On Windows a bare ``np.array([1, 2, 3])`` is ``int32`` on win64 (not
-        ``int64``), so it routes to ``INT32`` / ``m_int32``. pandas columns are
-        ``int64``, so :func:`f_df_to_nb` is unaffected; this only bites arrays
-        built by hand without an explicit dtype.
-    """
+    # Add one numpy array to nb as the column type matching its dtype.
+    # Returns True if a column was added, False if the array was dropped
+    # (object cannot be a native pandas column; see f_df_to_nb).
+    # Raises ValueError on an unsupported dtype or char/unicode width.
+    #
+    # Note (Windows): the dtype is taken as-is, and a bare np.array([1, 2, 3])
+    # is int32 on win64 (not int64), so it routes to INT32/m_int32. A pandas
+    # column is int64, so f_df_to_nb is unaffected; this only bites arrays
+    # built by hand without an explicit dtype.
+    #
+    # str_types: optional dict {title: kind}, kind "U" or "S" (same meaning
+    # as in f_df_to_nb). If `title` is listed, np_arr is first run through
+    # f_np_to_np_str to a fixed-width unicode (U) or char (S) array, so an
+    # object text array is KEPT as a U/S column instead of being dropped.
+    # The default {} is only ever read (never mutated), so sharing one
+    # instance is safe.
     if title in str_types:
         np_arr = f_np_to_np_str(np_arr, str_types[title])
     dt = np_arr.dtype
@@ -665,34 +530,23 @@ def f_add_to_nb(nb, title, np_arr, str_types={}):
     return True
 
 def f_df_to_nb(df, str_types={}):
-    """Convert a pandas DataFrame to a :class:`Pandas_nb`, one column per column.
-
-    Each column is added by dtype via :func:`f_add_to_nb`. Numeric and native
-    char (``|S``) columns become **shared views** of the DataFrame's memory;
-    object text columns are dropped unless listed in ``str_types``.
-
-    Args:
-        df: The source :class:`pandas.DataFrame`.
-        str_types: Optional ``{title: kind}`` with ``kind`` ``"U"`` or ``"S"``.
-            For a listed title, the column's array is first run through
-            :func:`f_np_to_np_str` to a fixed-width unicode (U) or char (S)
-            array, so it is kept as a U/S column instead of being dropped. The
-            default ``{}`` is only ever read, so sharing one instance is safe.
-
-    Returns:
-        A new :class:`Pandas_nb` holding the convertible columns.
-
-    Note:
-        A ``str_types``-listed column is **not** shared with ``df`` --
-        :func:`f_np_to_np_str` builds a fresh array (``astype``), so the two no
-        longer back the same memory and edits must be copied by hand. Unlisted
-        numeric/char columns stay shared views.
-
-    Note:
-        The ``str_types`` conversion is applied here and the result is passed to
-        :func:`f_add_to_nb` **without** ``str_types``, so a listed column is
-        converted exactly once (never double-converted).
-    """
+    # str_types: optional dict {title: kind}, kind "U" or "S". For a listed
+    # title, the column's array is first run through f_np_to_np_str to a
+    # fixed-width unicode (U) or char (S) array, so it is kept as a U/S
+    # column instead of being dropped -- a text column is object dtype,
+    # which f_add_to_nb drops, whereas a |U / |S array is added.
+    # Titles not listed are added by dtype as before. The default {} is
+    # only ever read (never mutated), so sharing one instance is safe.
+    #
+    # Note: a listed column is NOT shared with df -- f_np_to_np_str builds
+    # a fresh array (astype), so the nb column and df no longer back the
+    # same memory. Updating such a column on either side must be copied to
+    # the other by hand. (Unlisted numeric/char columns stay shared views.)
+    #
+    # Note: the str_types conversion is applied HERE (and the array is then
+    # passed to f_add_to_nb without str_types), while f_add_to_nb also
+    # accepts str_types for direct callers -- the same rule lives in both,
+    # so a listed column is converted exactly once (never forwarded/double).
     nb = Pandas_nb()
     for title in df.columns:
         arr = df[title].to_numpy()
@@ -702,19 +556,9 @@ def f_df_to_nb(df, str_types={}):
     return nb
 
 def f_help_wide(need, unit):
-    """Pick the smallest supported fixed width (1, 3, 10, 100) that fits ``need``.
-
-    Args:
-        need: The required width in the relevant units.
-        unit: A label for the error message only (e.g. ``"bytes"``,
-            ``"code points"``).
-
-    Returns:
-        The smallest of ``1, 3, 10, 100`` that is ``>= need``.
-
-    Raises:
-        ValueError: If ``need`` exceeds the largest supported width (100).
-    """
+    # Pick the smallest supported fixed width (1, 3, 10, 100) that fits
+    # `need` units. Raises ValueError if `need` exceeds 100. `unit` only
+    # labels the error message (e.g. "bytes", "code points").
     for w in (1, 3, 10, 100):
         if need <= w:
             return w
@@ -722,24 +566,14 @@ def f_help_wide(need, unit):
                      + " exceeds largest supported width 100")
 
 def f_np_to_np_str(np_arr, kind="U"):
-    """Convert an array to a fixed-width numpy string array.
-
-    Uses the smallest supported width (1, 3, 10, 100) that fits the longest
-    value.
-
-    Args:
-        np_arr: The source numpy array.
-        kind: ``"U"`` for unicode (width counted in code points) or ``"S"`` for
-            bytes (width counted in bytes). ``"S"`` encodes with the ascii
-            codec, so a non-ascii value raises ``UnicodeEncodeError``.
-
-    Returns:
-        A new numpy array of dtype ``<kind><width>`` (e.g. ``U10`` / ``S3``).
-
-    Raises:
-        ValueError: On an unknown ``kind``, or if the longest value exceeds the
-            largest supported width (100).
-    """
+    # Convert a numpy array to a numpy fixed-width string array, using the
+    # smallest supported width (1, 3, 10, 100) that fits the longest value.
+    #   kind "U": unicode, width counted in code points (itemsize // 4)
+    #   kind "S": bytes,   width counted in bytes      (itemsize); numpy
+    #             encodes with the ascii codec, raising UnicodeEncodeError
+    #             on a non-ascii value.
+    # Raises ValueError on an unknown kind, or if the longest value exceeds
+    # the largest supported width (100).
     if kind == "U":
         unit, label = 4, "code points"
     elif kind == "S":
@@ -801,26 +635,12 @@ _DF_NEXT_ID = [0]  # 1-element list so the counter can be bumped from a function
 
 
 def f_register_df(nb, df):
-    """Attach a pandas DataFrame to a :class:`Pandas_nb` by handle.
-
-    Stores ``df`` in the module registry under a fresh ``int64`` id and writes
-    that id into ``nb.m_df_id``, so the frame can be reached from nopython code
-    via an objmode call to :func:`f_eval_expr`. Must be called from plain Python
-    (it sets a jitclass member and touches the registry).
-
-    Args:
-        nb: The :class:`Pandas_nb` to tag with the handle.
-        df: The source :class:`pandas.DataFrame`. It is **not** copied and is
-            held **weakly**: :func:`f_eval_expr` sees later edits to it, but the
-            caller must keep the frame alive for as long as the handle is used
-            (ids are never reused).
-
-    Returns:
-        ``nb`` (for chaining).
-
-    Raises:
-        TypeError: If ``df`` is not a :class:`pandas.DataFrame`.
-    """
+    # Attach a python DataFrame to a Pandas_nb by handle: store df in the
+    # registry under a fresh int64 id and write that id into nb.m_df_id. Must be
+    # called from plain python (it sets a jitclass int64 member and touches the
+    # registry). Returns nb. The df is NOT copied, and is held WEAKLY (see the
+    # _DF_REGISTRY note): f_eval_expr sees later edits to it, but the caller must
+    # keep the df alive for as long as the handle is used.
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas.DataFrame")
     hid = _DF_NEXT_ID[0]
@@ -831,22 +651,10 @@ def f_register_df(nb, df):
 
 
 def f_eval_expr(expr, params):
-    """Evaluate a Python expression string from inside an objmode block.
-
-    The generic callback that lets jitted code call back into Python/pandas.
-    ``expr`` is evaluated with ``np``, ``pd``, the DataFrame registry ``DF``,
-    and ``params`` in scope.
-
-    Args:
-        expr: A Python expression string, e.g.
-            ``"params.m_floats['float1'] * 2.0"`` or, for a frame carried by
-            handle, ``"DF[params.m_df_id]['x'].sum()"``.
-        params: Any objmode-boxable value referenced as ``params`` in ``expr``
-            (a :class:`Pandas_nb`, a numpy array, a float, a tuple of these,
-            ...).
-
-    Returns:
-        Whatever ``expr`` evaluates to. The enclosing ``objmode`` block must
-        declare a matching static output type.
-    """
+    # Generic python callback: eval a python expression string with `np`, `pd`,
+    # the df registry `DF`, and the value `params` in scope, so the expression
+    # can reference them (e.g. a Pandas_nb: "params.m_floats['float1'] * 2.0",
+    # or a pandas call on the df carried by handle: "DF[params.m_df_id]['x'].sum()").
+    # Returns whatever it yields. params can be any objmode-boxable value (a
+    # Pandas_nb, numpy array, float, a tuple of several of these, ...).
     return eval(expr, {"np": np, "pd": pd, "DF": _DF_REGISTRY, "params": params})
