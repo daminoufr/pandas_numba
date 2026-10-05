@@ -38,6 +38,7 @@ tree at the repo root.
 - `pyproject.toml`         — packaging (single-module dist `pandas_numba`; `package-dir` maps to `code/`).
 - `.github/workflows/release.yml` — PyPI publish via Trusted Publishing (OIDC).
 - `docs_html/pandas_numba/source/` — hand-written Sphinx sources (conf.py, index.rst, api.rst, _static/).
+- `results/`                — saved output (plots, dumps); contents are committed (not gitignored).
 
 Each file in `tests/` prepends `code/` to `sys.path`, so `import pandas_numba`
 works both under pytest and when a file is run directly.
