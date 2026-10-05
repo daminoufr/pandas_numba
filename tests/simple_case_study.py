@@ -1,3 +1,8 @@
+# Homepage:   https://pypi.org/project/pandas-numba/
+# Repository: https://github.com/daminoufr/pandas_numba
+# PyPI:       https://pypi.org/project/pandas-numba/
+# [MIT](LICENSE) © 2026 Damien Loison
+#
 # simple_case_study.py
 #
 # Case study data: top-of-book (first level) snapshots for a single asset, as a
@@ -18,6 +23,12 @@
 #
 # Starts at 100 rows; f_make_book(n) scales it up. Plain pandas/numpy (data
 # generation, not a jitted hot path).
+
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "code"))  # code/ on path (module is there)
 
 import numpy as np
 import pandas as pd
@@ -166,6 +177,71 @@ def f_indicator_weighter_jit(mid, bv, av, flag):
     return out
 
 
+def f_indicator_weighter_python(mid, bv, av, flag):
+    # Pure-python twin of f_indicator_weighter_jit: same inputs, same result,
+    # but NOT jitted -- plain python loops over the numpy arrays. This is the hot
+    # path numba is meant to replace, kept here so the two can be timed head to
+    # head (see f_time_indicators). The logic is identical to the jit kernel:
+    # with h = number of "H" flags in the last 20 rows (i included), the window
+    # is the n = 2*h rows ending at i, each weighted by its total size
+    # (bid_vol+ask_vol); falls back to mid[i] when n == 0.
+    n_rows = mid.shape[0]
+    out = np.empty(n_rows, dtype=np.float32)
+    for i in range(n_rows):
+        lo20 = i - 19
+        if lo20 < 0:
+            lo20 = 0
+        h = 0
+        for j in range(lo20, i + 1):
+            if flag[j] == b"H":
+                h += 1
+        n = 2 * h
+        if n == 0:
+            out[i] = np.float32(mid[i])            # no H -> current mid
+            continue
+        lo = i - n + 1                             # window of n rows ending at i
+        if lo < 0:
+            lo = 0
+        num = 0.0
+        den = 0.0
+        for j in range(lo, i + 1):
+            w = float(bv[j] + av[j])               # total size weight
+            num += mid[j] * w
+            den += w
+        out[i] = np.float32(num / den)
+    return out
+
+
+def f_time_indicators(nb, n_runs=5):
+    # Time the mean_w_jit kernel njit vs pure python on nb's columns and report
+    # the speed-up. Both run on the exact same arrays the jit loop uses: mid
+    # (float64), bid_vol / ask_vol (int64) and flag (char1). The njit version is
+    # compiled once (warm-up) before timing, so we measure run time, not compile
+    # time; each side is the best of n_runs to shed scheduler noise.
+    mid = nb.m_floats["mid"]
+    bv = nb.m_ints["bid_vol"]
+    av = nb.m_ints["ask_vol"]
+    flag = nb.m_char1["flag"]
+
+    def _time_once(f):
+        t0 = time.perf_counter()
+        f(mid, bv, av, flag)
+        return time.perf_counter() - t0
+
+    # warm up: the first njit call triggers compilation -- do it OUTSIDE timing.
+    out_jit = f_indicator_weighter_jit(mid, bv, av, flag)
+    out_py = f_indicator_weighter_python(mid, bv, av, flag)
+    assert np.array_equal(out_jit, out_py), "njit and python results differ"
+
+    t_jit = min(_time_once(f_indicator_weighter_jit) for _ in range(n_runs))
+    t_py = min(_time_once(f_indicator_weighter_python) for _ in range(n_runs))
+
+    print(f"mean_w_jit over {mid.shape[0]} rows (best of {n_runs} runs):")
+    print(f"  python : {t_py * 1e3:10.3f} ms")
+    print(f"  njit   : {t_jit * 1e3:10.3f} ms")
+    print(f"  gain   : {t_py / t_jit:10.1f}x faster")
+
+
 @njit
 def f_indicators_jit(nb):
     # Orchestration only: compute the mean_w_jit kernel, attach it to nb as a
@@ -212,6 +288,7 @@ def f_test_book():
 
     book = f_indicators(f_markout_grid(df))
     book, nb = f_indicators_by_nb(book)
+    f_time_indicators(nb)                       # njit vs python timing + gain
     f_set_shared_and_un_shared(book, nb)        # add 3 cols to book + nb
     print('initial book')
     print(book.head(10).to_string())            # 10 first lines (initial)

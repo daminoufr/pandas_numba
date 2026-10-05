@@ -17,7 +17,7 @@ The ``Pandas_nb`` jitclass
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_add_type
       :language: python
 
@@ -37,7 +37,7 @@ every **fixed-width text** family follows ``f_add_char1``.
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_nb_to_df_fresh_and_inplace
       :language: python
 
@@ -68,7 +68,7 @@ The pandas bridge
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_df_to_nb_shares
       :language: python
 
@@ -78,7 +78,7 @@ The pandas bridge
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_nb_to_df_fresh_and_inplace
       :language: python
 
@@ -88,11 +88,11 @@ The pandas bridge
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_add_to_nb_dispatch
       :language: python
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_add_to_nb_raises
       :language: python
 
@@ -102,7 +102,7 @@ The pandas bridge
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_nb_to_np_unknown_code_raises
       :language: python
 
@@ -112,7 +112,7 @@ The pandas bridge
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_np_to_np_str
       :language: python
 
@@ -122,7 +122,7 @@ The pandas bridge
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_help_wide
       :language: python
 
@@ -140,17 +140,17 @@ Carrying a DataFrame by handle (objmode)
    The ``@njit`` side (``objmode`` hops back into Python and calls
    ``f_eval_expr``):
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: _njit_df_sum_via_objmode
       :language: python
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: _njit_df_mean_via_objmode
       :language: python
 
    The test that registers the frame and drives both calls:
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: test_df_handle_via_objmode
       :language: python
 
@@ -158,6 +158,6 @@ Carrying a DataFrame by handle (objmode)
    :class-title: example-dropdown
    :color: muted
 
-   .. literalinclude:: ../../../pandas_numba_tests.py
+   .. literalinclude:: ../../../tests/pandas_numba_tests.py
       :pyobject: _njit_eval_array_scalar_tuple
       :language: python

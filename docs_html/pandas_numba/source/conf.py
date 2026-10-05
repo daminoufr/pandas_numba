@@ -9,9 +9,9 @@ import sys
 from pathlib import Path
 
 # source/ is docs_html/pandas_numba/source -> repo root is three parents up.
-# Put the repo root on sys.path so autodoc can import pandas_numba.
+# The module lives under code/, so put that on sys.path for autodoc to import it.
 REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "code"))
 
 
 def _read_version() -> str:

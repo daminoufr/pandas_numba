@@ -19,20 +19,28 @@ A numba `jitclass` (`Pandas_nb`) holding pandas-style typed columns usable insid
 `@njit` nopython code, plus a pandas bridge (`f_df_to_nb` / `f_nb_to_df` and
 friends) and objmode glue
 (`f_eval_expr`) to call back into pandas from jitted code. Full design notes live
-in `pandas_numba.md`.
+in `docs/pandas_numba.md`.
 
 ## Layout
 
-- `pandas_numba.py`        — core: `Pandas_nb`, the bridge functions, `f_eval_expr`.
-- `pandas_numba_tests.py`  — pytest suite, driven by one `ALL_TYPES` table.
-- `simple_example.py`      — minimal end-to-end example (shared-view update + new column).
-- `simple_case_study.py`   — case-study data generator (plain pandas/numpy).
-- `pandas_numba.md`        — full data model, API, round-trip rules, constraints.
-- `pyproject.toml`         — packaging (single-module dist `pandas_numba`).
+The shippable module is `code/pandas_numba.py` (the source root, so `code/` holds
+only that). Tests and examples are in `tests/`, the design doc in `docs/`, the
+solution-management scripts in `scripts/`, and packaging / CI / the Sphinx docs
+tree at the repo root.
+
+- `code/pandas_numba.py`         — core: `Pandas_nb`, the bridge functions, `f_eval_expr` (the only packaged file).
+- `tests/pandas_numba_tests.py`  — pytest suite, driven by one `ALL_TYPES` table.
+- `tests/simple_example.py`      — minimal end-to-end example (shared-view update + new column).
+- `tests/simple_case_study.py`   — case-study data generator + njit-vs-python benchmark.
+- `docs/pandas_numba.md`              — full data model, API, round-trip rules, constraints.
+- `scripts/generate_html_docs.py`     — Sphinx HTML-docs orchestrator (`--check`/`--force`/`--open`).
+- `scripts/copy_to_www.py`            — publish the built site to the local www folder.
+- `pyproject.toml`         — packaging (single-module dist `pandas_numba`; `package-dir` maps to `code/`).
 - `.github/workflows/release.yml` — PyPI publish via Trusted Publishing (OIDC).
 - `docs_html/pandas_numba/source/` — hand-written Sphinx sources (conf.py, index.rst, api.rst, _static/).
-- `scripts/generate_html_docs.py` — Sphinx HTML-docs orchestrator (`--check`/`--force`/`--open`).
-- `scripts/copy_to_www.py` — publish the built site to the local www folder.
+
+Each file in `tests/` prepends `code/` to `sys.path`, so `import pandas_numba`
+works both under pytest and when a file is run directly.
 
 ## Python
 
@@ -47,15 +55,18 @@ A bare `python` is a different interpreter (3.13) and must not be used here.
 ## Tests
 
 ```
-D:\Anaconda\python.exe -m pytest pandas_numba_tests.py -v
+D:\Anaconda\python.exe -m pytest tests\pandas_numba_tests.py -v
 ```
+
+A bare `D:\Anaconda\python.exe -m pytest` (run at the repo root) also works —
+`pytest.ini` points `testpaths` at `tests`.
 
 Add a column type by adding one row to `ALL_TYPES`; every per-type test then
 covers it.
 
 ## Conventions
 
-- Keep docs (`pandas_numba.md`, `README.md`) in sync with code changes.
+- Keep docs (`docs/pandas_numba.md`, `README.md`) in sync with code changes.
 - Markdown tables are column-aligned in the source.
 
 ## GitHub

@@ -38,4 +38,5 @@ Repository = "https://github.com/daminoufr/pandas_numba"
 Issues = "https://github.com/daminoufr/pandas_numba/issues"
 
 [tool.setuptools]
+package-dir = {"" = "code"}
 py-modules = ["pandas_numba"]

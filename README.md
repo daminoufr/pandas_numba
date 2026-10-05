@@ -59,7 +59,7 @@ print(df)                               # df is changed
 # 2  6.0  3  13
 ```
 
-(The same script lives in [`simple_example.py`](simple_example.py).)
+(The same script lives in [`tests/simple_example.py`](tests/simple_example.py).)
 
 ## Calling Python (pandas) from a jitted function
 
@@ -95,13 +95,30 @@ trip costs on the order of ~15 µs, so it is for occasional calls, not hot loops
 
 ## Example data
 
-[`simple_case_study.py`](simple_case_study.py) generates a small top-of-book
+[`tests/simple_case_study.py`](tests/simple_case_study.py) generates a small top-of-book
 order-book DataFrame (bid/ask prices and volumes over time) as a worked example
 to feed through the bridge functions. `f_make_book(n)` scales it to `n` rows.
 
+It also computes an indicator with a **per-row-variable window** (the window
+length depends on recent activity — something pandas `rolling` cannot express
+but an `@njit` loop does naturally), and times the jitted kernel against an
+identical pure-Python twin (`f_indicator_weighter_jit` vs
+`f_indicator_weighter_python`) on the same arrays. Both return bit-identical
+results; the njit version is **~230× faster**:
+
+```
+mean_w_jit over 15483 rows (best of 5 runs):
+  python :    194.899 ms
+  njit   :      0.843 ms
+  gain   :      231.2x faster
+```
+
+(Exact numbers vary by machine; the first njit call compiles, so the benchmark
+warms it up before timing.)
+
 ## Documentation
 
-See [`pandas_numba.md`](pandas_numba.md) for the full data model, API, the
+See [`docs/pandas_numba.md`](docs/pandas_numba.md) for the full data model, API, the
 pandas round-trip rules, the df-by-handle / string-eval objmode mechanism, and
 the numba constraints.
 
@@ -121,7 +138,7 @@ regenerate on demand).
 ## Tests
 
 ```
-python -m pytest pandas_numba_tests.py -v
+python -m pytest tests/pandas_numba_tests.py -v
 ```
 
 The suite is driven by one `ALL_TYPES` table — add a column type by adding one

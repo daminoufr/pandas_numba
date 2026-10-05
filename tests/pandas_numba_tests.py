@@ -1,11 +1,16 @@
+# Homepage:   https://pypi.org/project/pandas-numba/
+# Repository: https://github.com/daminoufr/pandas_numba
+# PyPI:       https://pypi.org/project/pandas-numba/
+# [MIT](LICENSE) © 2026 Damien Loison
+
 """Official pytest suite for pandas_numba.py.
 
 This is THE suite to re-run on every change to ``pandas_numba.py``:
 
-    D:\\Anaconda\\python.exe -m pytest code\\pandas_numba_tests.py -v
-    D:\\Anaconda\\python.exe -m pytest code\\pandas_numba_tests.py -s -q   # see timing
-    D:\\Anaconda\\python.exe code\\pandas_numba_tests.py                    # direct run
-    D:\\Anaconda\\python.exe code\\pandas_numba_tests.py --list             # list tests + descriptions (no run)
+    D:\\Anaconda\\python.exe -m pytest tests\\pandas_numba_tests.py -v
+    D:\\Anaconda\\python.exe -m pytest tests\\pandas_numba_tests.py -s -q   # see timing
+    D:\\Anaconda\\python.exe tests\\pandas_numba_tests.py                    # direct run
+    D:\\Anaconda\\python.exe tests\\pandas_numba_tests.py --list             # list tests + descriptions (no run)
 
 The file name is not ``test_*.py``, so pytest collects it only by explicit path
 (the ``__main__`` block below does exactly that). Test functions are named
@@ -35,6 +40,11 @@ import gc
 import sys
 import time
 from collections import namedtuple
+from pathlib import Path
+
+# This file lives in tests/ but the module is in code/; put code/ on sys.path
+# so `import pandas_numba` resolves under pytest or a direct run.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "code"))
 
 import numpy as np
 import pandas as pd

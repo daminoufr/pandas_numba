@@ -4,7 +4,8 @@ A numba `jitclass` (`Pandas_nb`) that holds DataFrame-like columns usable inside
 `@njit` nopython code, plus a pandas bridge (`f_df_to_nb` / `f_nb_to_df` and
 friends) and a way to call
 back into Python/pandas from jitted code (`f_eval_expr` + objmode). Core lives in
-`pandas_numba.py`; tests and their `@njit` helpers in `pandas_numba_tests.py`.
+`code/pandas_numba.py`; tests and their `@njit` helpers in
+`tests/pandas_numba_tests.py`.
 
 ## Data model
 
@@ -107,7 +108,7 @@ while the handle is used; ids are never reused.
 The official suite is the pytest file `pandas_numba_tests.py`:
 
 ```
-D:\Anaconda\python.exe -m pytest code\pandas_numba_tests.py -v
+D:\Anaconda\python.exe -m pytest tests\pandas_numba_tests.py -v
 ```
 
 It is driven by one `ALL_TYPES` table — **add a column type by adding one row**,

@@ -43,7 +43,7 @@ TARGETS: dict[str, dict] = {
         "kind": "Python",
         # The module is imported by autodoc, so it (and pyproject's version)
         # are the inputs; editing a docstring reruns the build.
-        "inputs": ["pandas_numba.py", "pyproject.toml"],
+        "inputs": ["code/pandas_numba.py", "pyproject.toml"],
         "source": "docs_html/pandas_numba/source",
         "build": "docs_html/pandas_numba/build",
     },
