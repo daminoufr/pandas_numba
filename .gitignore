@@ -6,6 +6,9 @@ __pycache__/
 build/
 dist/
 
+# Generated HTML-docs manifest (docs_html/**/build/ is already covered by build/)
+docs_html/doc_build_manifest.json
+
 # Test / tooling caches
 .pytest_cache/
 .mypy_cache/
