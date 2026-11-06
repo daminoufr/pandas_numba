@@ -102,9 +102,18 @@ to feed through the bridge functions. `f_make_book(n)` scales it to `n` rows.
 It also computes an indicator with a **per-row-variable window** (the window
 length depends on recent activity — something pandas `rolling` cannot express
 but an `@njit` loop does naturally), and times the jitted kernel against an
-identical pure-Python twin (`f_indicator_weighter_jit` vs
-`f_indicator_weighter_python`) on the same arrays. Both return bit-identical
-results; the njit version is **~230× faster**:
+identical pure-Python twin on the same arrays. There is **one source of truth**:
+the Python function is written once, and `numba.njit` compiles that same source —
+it returns a new dispatcher without mutating the original, so the Python twin
+stays directly callable for a fair, bit-identical comparison:
+
+```python
+# f_indicator_weighter_python(...) is the plain-Python kernel (the loop).
+# The jitted twin is the SAME function, compiled at import time:
+f_indicator_weighter_jit = njit(f_indicator_weighter_python)
+```
+
+Both return bit-identical results; the njit version is **~230× faster**:
 
 ```
 mean_w_jit over 15483 rows (best of 5 runs):

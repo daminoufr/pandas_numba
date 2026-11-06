@@ -135,16 +135,21 @@ def f_indicators_by_nb(df):
     return df, nb
 
 
-@njit
-def f_indicator_weighter_jit(mid, bv, av, flag):
-    # The mean_w_jit kernel, kept separate so f_indicators_jit stays pure
-    # orchestration. Pure numeric: takes the mid (float64), bid_vol / ask_vol
-    # (int64) and flag (char) arrays, returns a fresh float32 array.
+def f_indicator_weighter_python(mid, bv, av, flag):
+    # The mean_w_jit kernel, as a single source of truth. This pure-python
+    # function is the canonical implementation; the njit-compiled twin
+    # (f_indicator_weighter_jit) is built from this exact source below via
+    # numba.njit(...), so the two can never drift. numba.njit returns a new
+    # dispatcher and does NOT mutate this function, so it stays directly
+    # callable in interpreted mode -- which is what lets f_time_indicators time
+    # the two head to head (the python side is the hot path numba replaces).
     #
-    # out[i] is a volume-weighted mean of mid over a window whose length is
-    # driven by recent activity: with h = number of "H" flags in the last 20
-    # rows (i included), the window is the n = 2*h rows ending at i, clamped to
-    # available history. Each row is weighted by its total size (bid_vol+ask_vol):
+    # Pure numeric: takes the mid (float64), bid_vol / ask_vol (int64) and flag
+    # (char) arrays, returns a fresh float32 array. out[i] is a volume-weighted
+    # mean of mid over a window whose length is driven by recent activity: with
+    # h = number of "H" flags in the last 20 rows (i included), the window is
+    # the n = 2*h rows ending at i, clamped to available history. Each row is
+    # weighted by its total size (bid_vol+ask_vol):
     #   out[i] = Σ mid[k]*(bid_vol[k]+ask_vol[k]) / Σ (bid_vol[k]+ask_vol[k])
     # If n == 0 (no "H" in the last 20 rows) it falls back to mid[i]. The
     # per-row-variable window is exactly what pandas rolling cannot express but
@@ -177,39 +182,9 @@ def f_indicator_weighter_jit(mid, bv, av, flag):
     return out
 
 
-def f_indicator_weighter_python(mid, bv, av, flag):
-    # Pure-python twin of f_indicator_weighter_jit: same inputs, same result,
-    # but NOT jitted -- plain python loops over the numpy arrays. This is the hot
-    # path numba is meant to replace, kept here so the two can be timed head to
-    # head (see f_time_indicators). The logic is identical to the jit kernel:
-    # with h = number of "H" flags in the last 20 rows (i included), the window
-    # is the n = 2*h rows ending at i, each weighted by its total size
-    # (bid_vol+ask_vol); falls back to mid[i] when n == 0.
-    n_rows = mid.shape[0]
-    out = np.empty(n_rows, dtype=np.float32)
-    for i in range(n_rows):
-        lo20 = i - 19
-        if lo20 < 0:
-            lo20 = 0
-        h = 0
-        for j in range(lo20, i + 1):
-            if flag[j] == b"H":
-                h += 1
-        n = 2 * h
-        if n == 0:
-            out[i] = np.float32(mid[i])            # no H -> current mid
-            continue
-        lo = i - n + 1                             # window of n rows ending at i
-        if lo < 0:
-            lo = 0
-        num = 0.0
-        den = 0.0
-        for j in range(lo, i + 1):
-            w = float(bv[j] + av[j])               # total size weight
-            num += mid[j] * w
-            den += w
-        out[i] = np.float32(num / den)
-    return out
+# The jit twin is the same source, compiled at import time. njit(fn) wraps fn
+# in a dispatcher without touching fn, so there is exactly one body to maintain.
+f_indicator_weighter_jit = njit(f_indicator_weighter_python)
 
 
 def f_time_indicators(nb, n_runs=5):
